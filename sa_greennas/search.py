@@ -10,7 +10,11 @@ import numpy as np
 def ranks(records):
     vectors=np.asarray([r['objectives'] for r in records]);remaining=set(range(len(records)));fronts=[]
     while remaining:
-        front=[i for i in remaining if not any(np.all(vectors[j]<=vectors[i]) and np.any(vectors[j]<vectors[i]) for j in remaining if j!=i)]
+        def dominates(j,i):
+            feasible_j=bool(records[j].get('feasible',True));feasible_i=bool(records[i].get('feasible',True))
+            if feasible_j!=feasible_i:return feasible_j
+            return np.all(vectors[j]<=vectors[i]) and np.any(vectors[j]<vectors[i])
+        front=[i for i in remaining if not any(dominates(j,i) for j in remaining if j!=i)]
         fronts.append(front);remaining.difference_update(front)
     return fronts
 
