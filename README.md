@@ -2,7 +2,7 @@
 
 Implementation of **SA-GreenNAS: Robust, Calibrated, and Device-Aware Model Selection for Resource-Constrained Industrial Vision Systems**.
 
-The mobile candidate encoder has configurable stage depth, width, and depthwise kernel size. Architecture search ranks clean recognition, worst-condition F1, confidence ECE, measured P95, and parameters with a hard latency/memory envelope. The included compact mobile search space is declared in search.py; expand it only using operators supported by the target backend.
+The mobile candidate encoder has configurable stage depth, width, and depthwise kernel size. Architecture search ranks clean recognition, worst-condition F1, confidence ECE, measured P95, and parameters with a hard latency cap. Parameter count is a model-size objective; the current search does not measure or enforce peak runtime memory. The included compact mobile search space is declared in search.py; expand it only using operators supported by the target backend.
 
 ## Install
 
