@@ -30,15 +30,20 @@ def crowding(records,front):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--data',required=True);parser.add_argument('--output',required=True);parser.add_argument('--population',type=int,default=24);parser.add_argument('--generations',type=int,default=10);parser.add_argument('--epochs',type=int,default=12);parser.add_argument('--seed',type=int,default=13);parser.add_argument('--latency-cap',type=float,default=15.)
-    args=parser.parse_args();package=__package__;root=Path(args.output);root.mkdir(parents=True,exist_ok=True);rng=np.random.default_rng(args.seed);space=[[16,24,32,48],[3,5,7],[2,3,4,5]];cache={};evaluations=[]
+    parser.add_argument('--memory-cap-mib',type=float);parser.add_argument('--device',default='cpu')
+    args=parser.parse_args()
+    if args.memory_cap_mib is not None and args.memory_cap_mib<=0:parser.error('memory-cap-mib must be positive')
+    package=__package__;root=Path(args.output);root.mkdir(parents=True,exist_ok=True);rng=np.random.default_rng(args.seed);space=[[16,24,32,48],[3,5,7],[2,3,4,5]];cache={};evaluations=[]
     def evaluate(gene):
         key=tuple(gene)
         if key in cache:return cache[key]
         path=root/('candidate_'+str(len(cache)));path.mkdir();config={'width':gene[0],'kernel':gene[1],'depth':gene[2]};(path/'config.json').write_text(json.dumps(config))
-        subprocess.run([sys.executable,'-m',package+'.cli','train','--input',args.data,'--output',str(path),'--config',str(path/'config.json'),'--epochs',str(args.epochs),'--seed',str(args.seed)],check=True)
-        subprocess.run([sys.executable,'-m',package+'.cli','evaluate','--input',str(Path(args.data)/'validation.npz'),'--model',str(path/'model.pt'),'--output',str(path/'validation'),'--batch-size','1'],check=True)
+        subprocess.run([sys.executable,'-m',package+'.cli','train','--input',args.data,'--output',str(path),'--config',str(path/'config.json'),'--epochs',str(args.epochs),'--seed',str(args.seed),'--device',args.device],check=True)
+        subprocess.run([sys.executable,'-m',package+'.cli','evaluate','--input',str(Path(args.data)/'validation.npz'),'--model',str(path/'model.pt'),'--output',str(path/'validation'),'--batch-size','1','--device',args.device],check=True)
         metric=json.loads((path/'validation/metrics.json').read_text());objectives=[1-metric['macro_f1'],1-metric.get('worst_group_f1',metric['macro_f1']),metric['ece'],np.log(max(metric['p95_latency_ms'],1e-6)),np.log(max(metric['parameters'],1))]
-        record={'gene':gene,'objectives':list(map(float,objectives)),'metrics':metric,'feasible':metric['p95_latency_ms']<=args.latency_cap,'path':str(path)};cache[key]=record;evaluations.append(record);return record
+        memory_key='peak_cuda_allocated_mib' if args.device.startswith('cuda') else 'max_observed_process_rss_mib'
+        memory_ok=args.memory_cap_mib is None or metric[memory_key]<=args.memory_cap_mib
+        record={'gene':gene,'objectives':list(map(float,objectives)),'metrics':metric,'feasible':metric['p95_latency_ms']<=args.latency_cap and memory_ok,'memory_source':memory_key,'memory_cap_mib':args.memory_cap_mib,'path':str(path)};cache[key]=record;evaluations.append(record);return record
     population=[[int(rng.choice(axis)) for axis in space] for _ in range(args.population)]
     for generation in range(args.generations):
         records=[evaluate(gene) for gene in population];children=[]

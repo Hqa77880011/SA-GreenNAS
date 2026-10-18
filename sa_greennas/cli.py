@@ -181,6 +181,9 @@ def main():
         network.load_state_dict(state["state"])
         network.eval()
         data = read(args.input)
+        import psutil
+        peak_rss=psutil.Process().memory_info().rss/2**20
+        if args.device.startswith("cuda"):torch.cuda.reset_peak_memory_stats(args.device)
         stored, elapsed = {}, []
         for begin in range(0, len(data["x"]), args.batch_size):
             indices = np.arange(begin, min(begin + args.batch_size, len(data["x"])))
@@ -188,7 +191,8 @@ def main():
             if args.device.startswith("cuda"):
                 torch.cuda.synchronize()
             start = time.perf_counter()
-            prediction = network(batch)
+            with torch.no_grad():
+                prediction = network(batch)
             if "classification_temperature" in state and "probability" in prediction:
                 prediction["probability"] = (prediction["probability"].clamp_min(1e-10).log() / state["classification_temperature"]).softmax(-1)
             if "interval_expansion" in state:
@@ -202,6 +206,7 @@ def main():
             if args.device.startswith("cuda"):
                 torch.cuda.synchronize()
             elapsed.append((time.perf_counter() - start) / len(indices))
+            peak_rss=max(peak_rss,psutil.Process().memory_info().rss/2**20)
             for key, value in prediction.items():
                 if isinstance(value, torch.Tensor) and value.ndim and len(value) == len(indices):
                     stored.setdefault(key, []).append(value.detach().cpu().numpy())
@@ -212,6 +217,8 @@ def main():
         values.update(parameters=sum(p.numel() for p in network.parameters()),
                       mean_latency_ms=1000 * float(np.mean(elapsed)),
                       p95_latency_ms=1000 * float(np.quantile(elapsed, .95)))
+        values["max_observed_process_rss_mib"]=peak_rss
+        if args.device.startswith("cuda"):values["peak_cuda_allocated_mib"]=torch.cuda.max_memory_allocated(args.device)/2**20
         np.savez_compressed(out / "predictions.npz", **result)
         dump(out / "metrics.json", values)
     elif args.command == "plot":

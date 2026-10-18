@@ -2,7 +2,7 @@
 
 Implementation of **SA-GreenNAS: Robust, Calibrated, and Device-Aware Model Selection for Resource-Constrained Industrial Vision Systems**.
 
-The mobile candidate encoder has configurable stage depth, width, and depthwise kernel size. Architecture search ranks clean recognition, worst-condition F1, confidence ECE, measured P95, and parameters with a hard latency cap. Parameter count is a model-size objective; the current search does not measure or enforce peak runtime memory. The included compact mobile search space is declared in search.py; expand it only using operators supported by the target backend.
+The mobile candidate encoder has configurable stage depth, width, and depthwise kernel size. Architecture search ranks clean recognition, worst-condition F1, confidence ECE, measured P95, and parameters with a hard latency cap. Parameter count is a model-size objective; the optional deployment memory constraint uses an explicitly recorded CPU RSS observation or CUDA allocator peak. The included compact mobile search space is declared in search.py; expand it only using operators supported by the target backend.
 
 ## Install
 
@@ -71,3 +71,11 @@ python -m sa_greennas.search --data data/prepared --output runs/search --populat
 ```
 
 Search trains each uncached candidate, evaluates only validation conditions, and measures batch-one forward latency on the executing device. NSGA-II uses nondominated sorting, crowding, tournament selection, gene crossover, and mutation. `selection.json` contains the feasible Pareto set and the deterministic deployment choice. The compact width/kernel/depth space is explicit in `search.py`. This search does not infer physical energy; supply instrumented energy results when comparing the paper’s energy objective.
+
+## Selected reproduction setting
+
+Use the compact width/kernel/depth search on the current CPU and FP32 batch-one inference. The generated 96-example task keeps source groups disjoint, uses clean/brightness/blur for search-visible conditions and adds low contrast only to test. Search supports an explicit device and optional memory cap. CPU memory means maximum process RSS observed between batches; it is not an exact OS high-water mark. CUDA uses allocator peak allocated memory. Feasibility combines the measured latency cap and the selected memory field; parameter count stays a separate objective.
+
+```bash
+python -m sa_greennas.search --data data/prepared --output runs/search --population 12 --generations 5 --epochs 10 --device cpu --latency-cap 15 --memory-cap-mib 1024
+```

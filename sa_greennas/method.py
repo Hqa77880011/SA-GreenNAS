@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .layers import classification_demo
+
 
 
 class Model(nn.Module):
@@ -33,5 +33,14 @@ class Model(nn.Module):
 
 def demo(seed,n,c):
     import numpy as np
-    d=classification_demo(seed,n,classes=c.get('classes',3));rng=np.random.default_rng(seed)
-    x=rng.normal(size=(n,3,32,32)).astype('float32');x[:,0]+=d['y'][:,None,None]/3;d['x']=x;return d
+    from scipy.ndimage import gaussian_filter
+    if n<16 or n%4:raise ValueError('Condition demo count must be a multiple of four and at least 16')
+    rng=np.random.default_rng(seed);sources=n//4;train=min(max(1,int(.6*sources)),sources-3);val=min(max(1,int(.15*sources)),sources-train-2);cal=min(max(1,int(.1*sources)),sources-train-val-1)
+    images=[];labels=[];conditions=[];groups=[];splits=[]
+    for source in range(sources):
+        role=0 if source<train else 1 if source<train+val else 2 if source<train+val+cal else 3
+        label=source%c.get('classes',3);clean=rng.uniform(.1,.3,(3,32,32)).astype('float32');clean[label%3]+=.4
+        for condition in (0,1,2,3 if role==3 else 0):
+            image=clean if condition==0 else np.clip(clean+.15,0,1) if condition==1 else gaussian_filter(clean,(0,1,1)) if condition==2 else .5+(clean-.5)*.4
+            images.append(image.copy());labels.append(label);conditions.append(condition);groups.append(source);splits.append(role)
+    return {'x':np.array(images),'y':np.array(labels),'condition':np.array(conditions),'group':np.array(groups),'split':np.array(splits)}
